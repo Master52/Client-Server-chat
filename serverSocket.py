@@ -19,22 +19,25 @@ class Socket(object):
     def startListening(self):
         #creating socket
         self._serverSocket = socket.socket()
-        if self.debug == True :
-            print("Socket Created")
-        self._serverSocket.bind((self.addr,self.port))
-        if self.debug == True:
-            print("Socket Binded succefully")
-        while True:
-            print("{0} Listening for connection on port ...{1}".format(self.addr,self.port))
-            self._serverSocket.listen(5)
-            clientfd,addr = self._serverSocket.accept()
-            print("Connected to host {0}".format(addr))
+        try :
+            if self.debug == True :
+                print("Socket Created")
+            self._serverSocket.bind((self.addr,self.port))
+            if self.debug == True:
+               print("Socket Binded succefully")
+            while True:
+                print("{0} Listening for connection on port{1} ...".format(self.addr,self.port))
+                self._serverSocket.listen(5)
+                clientfd,addr = self._serverSocket.accept()
+                print("Connected to host {0}".format(addr[0]))
 
-           # 'is_alive' parameter is used to check wether the client is alive or not 
-            self.connectionDetail[addr] = {'sockd':clientfd ,'is_alive':True}
-            self.connectionCount += 1
-            # A Thread which will handle every new client get connected 
-            threading.Thread(target = self.newConnectionHandler,args=(addr,)).start()
+               # 'is_alive' parameter is used to check wether the client is alive or not 
+                self.connectionDetail[addr] = {'sockd':clientfd ,'is_alive':True}
+                self.connectionCount += 1
+                # A Thread which will handle every new client get connected 
+                threading.Thread(target = self.newConnectionHandler,args=(addr,)).start()
+        except OSError:
+            print("Another server is running on the same port number")
             
     
     def newConnectionHandler(self,addr):
@@ -42,13 +45,17 @@ class Socket(object):
 
     def _sendmsg(self,addr):
         try:
-            while True:
+            while self.connectionDetail[addr]['is_alive']:
                  print("\n[Server:]    ",end='')
                  msg = input()
                  #Always check wether the client is online or not before send the message
                  #If it will break the while loop
-                 if self.connectionDetail[addr]['is_alive'] == True :
-                    self.connectionDetail[addr]['sockd'].send(bytes(msg,'utf-8'))
+                 if self.connectionDetail[addr]['is_alive']:
+                     if msg == 'q' or msg == 'Q':
+                        self.connectionDetail[addr]['sockd'].send(bytes('close','utf-8'))
+                        self.connectionDetail[addr]['is_alive'] = False
+                        break
+                     self.connectionDetail[addr]['sockd'].send(bytes(msg,'utf-8'))
                  else:
                     break
         
@@ -57,16 +64,20 @@ class Socket(object):
         except OSError:
             print("Bye")
 
+        except KeyError:
+            pass
+
 #whenver a client disconnects from the network it will send a close message to the server
 #Server on reciving the close message will remove the client from the connection list
     def _recvmsg(self,addr):
-        while self.connectionDetail[addr]['is_alive'] == True:
+        while self.connectionDetail[addr]['is_alive']:
              msg = self.connectionDetail[addr]['sockd'].recv(4096)
              msg = msg.decode(encoding = 'utf-8')
              if msg == 'close':
-                 self.connectionDetail[addr]['is_alive'] = False
+                 self.connectionDetail[addr]['sockd'].send(bytes('close','utf-8'))
+                 break
              else:
-                print("\n{0}    {1}".format(addr,msg))
+                print("\n{0}    {1}".format(addr[0],msg))
         #Comming out from this loop simply mean the client has been disconnected so it call disconnects method to remove it
 
         self.disconnect(addr)
@@ -90,29 +101,28 @@ class Socket(object):
                    value['is_alive'] = False
                    self.connectionCount -= 1
                    print("{0} disconnected".format(addr))
+                   print("Press Enter to quit")
         else:
+            #checking wether the address is present in client list or not
             if address in self.connectionDetail:
-                if self.connectionDetail[address]['sockd'] == True:
+                if self.connectionDetail[address]['is_alive']:
                     self.connectionDetail[address]['sockd'].send(bytes(('close'),'utf-8'))
                     self.connectionDetail[address]['sockd'].close()
+                    self.connectionDetail[address]['is_alive'] = False
                     del(self.connectionDetail[address])
                     self.connectionCount -= 1
-            print("{0} disconnected".format(address))
+                    print("{0} disconnected".format(address))
 
 
-    def _clenaup(self) :
-        self.disconnect()
+    def __del__(self) :
         #closing the server socket
         self._serverSocket.close()
         del self.connectionCount
         del self.connectionDetail
         del self.addr
-
-    def closeConnection(self) :
-        #Whenver this funciton in called it closes all the connection which are present is connection list
-        self._clenaup()
         if self.debug == True:
             print("Socket closed succefully")
+
 
 
 def main():
@@ -120,8 +130,8 @@ def main():
     try:
         s.startListening()
     except KeyboardInterrupt:
-        s.closeConnection()
-    del s
+        s.disconnect()
+
 
 if __name__ == '__main__' :
     main()

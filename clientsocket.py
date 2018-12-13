@@ -5,7 +5,7 @@ import time
 import threading
 
 class ClientSocket(object):
-    def __init__(self,addr='127.0.1.1',port = 5253,debug = True):
+    def __init__(self,addr=socket.gethostbyname(socket.gethostname()),port = 5253,debug = True):
         self.addr = addr
         self.port = port
         self.debug = debug
@@ -28,11 +28,11 @@ class ClientSocket(object):
 
     def _sendmsg(self):
         try:
-            while True:
+            while self.connection_is_alive:
               print("\n[ME:]   ",end='')
               msg = input()
             #Always checking wether the server is still alive or not
-              if self.connection_is_alive == True:
+              if self.connection_is_alive:
                     if msg == 'q' or msg == 'Q':
                         self.connection_is_alive = False
                         self.clientfd.send(bytes(('close'),'utf-8'))
@@ -45,14 +45,15 @@ class ClientSocket(object):
 
     def _recvmsg(self):
         try :
-            while self.connection_is_alive == True:
+            while self.connection_is_alive:
                  msg = self.clientfd.recv(4096)
                  msg = msg.decode(encoding = 'utf-8')
-                 if msg == 'close':
-                     print("Server is down.\n Press enter to quit")
-                     self.connection_is_alive = False
-                     break
-                 print("\n[Client:]    {0}".format(msg))
+                 if self.connection_is_alive:
+                     if msg == 'close':
+                         print("Server is down ")
+                         self.connection_is_alive = False
+                         break
+                     print("\n[Client:]    {0}".format(msg))
         except OSError:
             return
     def startChatting(self):
@@ -62,27 +63,36 @@ class ClientSocket(object):
         self.t2 = threading.Thread(target = self._sendmsg,args=())
         self.t1.start()
         self.t2.start()
-        #It will wait for both the thead to complelte i.e. it will exit when the user want to exit
         self.t1.join()
         self.t2.join()
+        #It will wait for both the thead to complelte i.e. it will exit when the user want to exit
 
-    def closeConnection(self):
+    def closeconnection(self):
         #First send server a message that it is closing
-        self.clientfd.send(bytes(('close'),'utf-8'))
-        #Stops the infinite loop of all the threads
-        self.connection_is_alive = False
+        if self.connection_is_alive:
+            self.clientfd.send(bytes(('close'),'utf-8'))
+            #Stops the infinite loop of all the threads
+            self.connection_is_alive = False
+        print("\nPress enter to Quit")
+
+    def __del__(self):
         #Closes the connection
         self.clientfd.close()
         if self.debug == True :
             print("Connection closed succefully")
+        
+        del self.debug
+
 
 def main():
     c = ClientSocket()
     try:
        c.start_connection()
-    #If the user presses C-c to cloes  the chat
+       del c
+    #If the user presses C-c to c:w
+    # loes  the chat
     except KeyboardInterrupt:
-        c.closeConnection()
+         c.closeconnection()
 
 
 if __name__ == '__main__' :
